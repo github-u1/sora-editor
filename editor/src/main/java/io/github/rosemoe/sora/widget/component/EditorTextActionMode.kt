@@ -21,22 +21,42 @@
  *     Please contact Rosemoe by email 2073412493@qq.com if you need
  *     additional information or have any questions
  ******************************************************************************/
-@SuppressWarnings("unused")
-object Versions {
-    // Project versions
-    private const val version = "0.21.1"
-    const val versionCode = 77
 
-    val versionName by lazy {
-        if (CI.isCiBuild) {
-            "$version-${CI.commitHash}-SNAPSHOT"
-        } else version
+package io.github.rosemoe.sora.widget.component
+
+import android.annotation.TargetApi
+import android.graphics.Rect
+import android.os.Build
+import android.view.ActionMode
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
+import io.github.rosemoe.sora.event.SelectionChangeEvent
+import io.github.rosemoe.sora.event.subscribeEvent
+import io.github.rosemoe.sora.widget.CodeEditor
+
+@TargetApi(Build.VERSION_CODES.M)
+class EditorTextActionMode(private val editor: CodeEditor) : EditorBuiltinComponent {
+
+    private val eventManager = editor.createSubEventManager()
+    private var activeActionMode: ActionMode? = null
+
+    init {
+        eventManager.subscribeEvent<SelectionChangeEvent> { event, _ ->
+
+        }
     }
 
-    // Platform & Tool versions
-    const val buildToolsVersion = "34.0.0"
-    const val compileSdkVersion = 34
-    const val minSdkVersion = 21
-    const val minSdkVersionHighApi = 26
-    const val targetSdkVersion = 34
+    fun dismiss() {
+        activeActionMode?.finish()
+        activeActionMode = null
+    }
+
+    override fun isEnabled() = eventManager.isEnabled
+
+    override fun setEnabled(enabled: Boolean) {
+        eventManager.isEnabled = enabled
+        dismiss()
+    }
+
 }

@@ -1,4 +1,4 @@
-/*
+/*******************************************************************************
  *    sora-editor - the awesome code editor for Android
  *    https://github.com/Rosemoe/sora-editor
  *    Copyright (C) 2020-2023  Rosemoe
@@ -20,19 +20,18 @@
  *
  *     Please contact Rosemoe by email 2073412493@qq.com if you need
  *     additional information or have any questions
+ ******************************************************************************/
+
+package io.github.rosemoe.sora.lang.styling.line
+
+import io.github.rosemoe.sora.lang.styling.color.ResolvableColor
+
+/**
+ * Set custom line gutter background color for the given line
+ *
+ * @param line the line index
+ * @param color the gutter background color of this line
+ * @author Rosemoe
  */
-package io.github.rosemoe.sora.graphics;
-
-import android.graphics.RectF;
-
-public class RectUtils {
-
-    public static boolean contains(RectF rect, float x, float y, float extraXSpace) {
-        return (x >= rect.left - extraXSpace && x <= rect.right + extraXSpace && y >= rect.top && y <= rect.bottom);
-    }
-
-    public static boolean almostContains(RectF rect, float x, float y, float extraSpace) {
-        return (x >= rect.left - extraSpace && x <= rect.right + extraSpace && y >= rect.top - extraSpace && y <= rect.bottom + extraSpace);
-    }
-
-}
+class LineGutterBackground(override var line: Int, var color: ResolvableColor) :
+    LineAnchorStyle(line)

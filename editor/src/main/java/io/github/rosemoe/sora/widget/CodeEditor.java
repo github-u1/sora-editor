@@ -29,6 +29,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.res.Resources;
+import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.Rect;
@@ -64,19 +65,12 @@ import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EdgeEffect;
 import android.widget.EditText;
-import android.widget.OverScroller;
 import android.widget.SearchView;
 import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.Px;
 import androidx.annotation.UiThread;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-
 import io.github.rosemoe.sora.I18nConfig;
 import io.github.rosemoe.sora.R;
 import io.github.rosemoe.sora.annotations.UnsupportedUserUsage;
@@ -142,6 +136,9 @@ import io.github.rosemoe.sora.widget.style.builtin.DefaultLineNumberTip;
 import io.github.rosemoe.sora.widget.style.builtin.HandleStyleDrop;
 import io.github.rosemoe.sora.widget.style.builtin.HandleStyleSideDrop;
 import io.github.rosemoe.sora.widget.style.builtin.MoveCursorAnimator;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import kotlin.text.StringsKt;
 
 /**
@@ -524,14 +521,17 @@ public class CodeEditor extends View implements ContentListener, Formatter.Forma
             var configuration = ViewConfiguration.get(getContext());
             verticalScrollFactor = configuration.getScaledVerticalScrollFactor();
         } else {
+            TypedArray a = null;
             try {
-                try (var a = getContext().obtainStyledAttributes(new int[]{android.R.attr.listPreferredItemHeight})) {
-                    verticalScrollFactor = a.getFloat(0, 32);
-                    a.recycle();
-                }
+                a = getContext().obtainStyledAttributes(new int[]{android.R.attr.listPreferredItemHeight});
+                verticalScrollFactor = a.getFloat(0, 32);
             } catch (Exception e) {
                 Log.e(LOG_TAG, "Failed to get scroll factor, using default.", e);
                 verticalScrollFactor = 32;
+            } finally {
+                if (a != null) {
+                    a.recycle();
+                }
             }
         }
         lineSeparator = LineSeparator.LF;
@@ -1508,6 +1508,9 @@ public class CodeEditor extends View implements ContentListener, Formatter.Forma
     private int findCursorBlock(List<CodeBlock> blocks) {
         int line = cursor.getLeftLine();
         int min = binarySearchEndBlock(line, blocks);
+        if (min == -1) {
+            min = 0;
+        }
         int max = blocks.size() - 1;
         int minDis = Integer.MAX_VALUE;
         int found = -1;
@@ -1542,35 +1545,18 @@ public class CodeEditor extends View implements ContentListener, Formatter.Forma
     }
 
     /**
-     * Find the first code block that maybe seen on screen
-     * Because the code blocks is sorted by its end line position
-     * we can use binary search to quicken this process in order to decrease
-     * the time we use on finding
+     * Find the first code block that maybe seen on screen Because the code blocks is sorted by its
+     * end line position we can use binary search to quicken this process in order to decrease the
+     * time we use on finding
      *
      * @param firstVis The first visible line
      * @param blocks   Current code blocks
-     * @return The block we found. It is always a valid index(Unless there is no block)
+     * @return The index of the block we found or <code>-1</code> if no code block is found.
      */
     int binarySearchEndBlock(int firstVis, List<CodeBlock> blocks) {
-        //end > firstVis
-        int left = 0, right = blocks.size() - 1, mid, row;
-        int max = right;
-        while (left <= right) {
-            mid = (left + right) / 2;
-            if (mid < 0) return 0;
-            if (mid > max) return max;
-            row = blocks.get(mid).endLine;
-            if (row > firstVis) {
-                right = mid - 1;
-            } else if (row < firstVis) {
-                left = mid + 1;
-            } else {
-                left = mid;
-                break;
-            }
-        }
-        return Math.max(0, Math.min(left, max));
+        return CodeBlock.binarySearchEndBlock(firstVis, blocks);
     }
+
 
     /**
      * Get spans on the given line
@@ -2068,6 +2054,13 @@ public class CodeEditor extends View implements ContentListener, Formatter.Forma
      * @see IntPair
      */
     public long getPointPositionOnScreen(float x, float y) {
+        var stuckLines = renderer.lastStuckLines;
+        if (stuckLines != null) {
+            if (y < stuckLines.size() * getRowHeight()) {
+                var index = (int) (y / getRowHeight());
+                return getPointPosition(x, layout.getCharLayoutOffset(stuckLines.get(index).startLine, 0)[0] - getRowHeight() / 2f);
+            }
+        }
         return getPointPosition(x + getOffsetX(), y + getOffsetY());
     }
 
@@ -2132,7 +2125,7 @@ public class CodeEditor extends View implements ContentListener, Formatter.Forma
      * 1. Ligatures are divided into single characters.<br/>
      * 2. Text direction is always LTR (left-to-right).<br/>
      * 3. Some emojis with variation selector or fitzpatrick can not be shown correctly with specified attributes.<br/>
-     * 4. ZWJ and ZWNJ takes no effect.<br/>
+     * 4. ZWJ and ZWNJ take no effect.<br/>
      * Benefits:<br/>
      * Better performance when the text is very big, especially when you are displaying a text with long lines.
      *
@@ -4106,14 +4099,14 @@ public class CodeEditor extends View implements ContentListener, Formatter.Forma
     }
 
     /**
-     * Get using InputMethodManager
+     * Get using {@link InputMethodManager}
      */
     protected InputMethodManager getInputMethodManager() {
         return inputMethodManager;
     }
 
     /**
-     * Called by CodeEditorInputConnection
+     * Called by {@link EditorInputConnection}
      */
     protected void onCloseConnection() {
         setExtracting(null);
@@ -4253,7 +4246,7 @@ public class CodeEditor extends View implements ContentListener, Formatter.Forma
                 break;
             case MotionEvent.ACTION_MOVE:
                 int deltaX = x - downX;
-                if (forceHorizontalScrollable) {
+                if (forceHorizontalScrollable && !touchHandler.hasAnyHeldHandle()) {
                     if (deltaX > 0 && getScroller().getCurrX() == 0
                             || deltaX < 0 && getScroller().getCurrX() == getScrollMaxX()) {
                         getParent().requestDisallowInterceptTouchEvent(false);
@@ -4366,7 +4359,14 @@ public class CodeEditor extends View implements ContentListener, Formatter.Forma
         if (event.getAction() == MotionEvent.ACTION_SCROLL && event.isFromSource(InputDevice.SOURCE_CLASS_POINTER)) {
             float v_scroll = -event.getAxisValue(MotionEvent.AXIS_VSCROLL);
             float h_scroll = -event.getAxisValue(MotionEvent.AXIS_HSCROLL);
-            touchHandler.onScroll(event, event, h_scroll * verticalScrollFactor, v_scroll * verticalScrollFactor);
+            float distanceX = h_scroll * verticalScrollFactor;
+            float distanceY = v_scroll * verticalScrollFactor;
+            if (keyEventHandler.getKeyMetaStates().isAltPressed()) {
+                float multiplier = props.fastScrollSensitivity;
+                distanceX *= multiplier;
+                distanceY *= multiplier;
+            }
+            touchHandler.onScroll(event, event, distanceX, distanceY);
             return true;
         }
         return super.onGenericMotionEvent(event);
